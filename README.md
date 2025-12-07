@@ -18,14 +18,7 @@ A Claude Code skill for managing Jira boards, issues, and sprints via the Jira R
 git clone https://github.com/YOUR_USERNAME/jira-board-skill.git ~/.claude/skills/jira-board
 ```
 
-### 2. Install dependencies
-
-```bash
-pip install playwright
-playwright install chromium
-```
-
-### 3. Configure environment variables
+### 2. Configure environment variables
 
 Add these to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
@@ -76,7 +69,18 @@ Once installed, Claude Code will automatically use this skill when you ask about
 > Create a bug ticket for the login issue
 ```
 
-## Azure AD / SSO Support
+## Azure AD / SSO Support (Optional)
+
+> **Note:** This section only applies if your Jira instance is behind Azure AD, SAML, or similar SSO. If you have direct access to Jira (e.g., via VPN or Jira Cloud with API token), you can skip this section entirely.
+
+### Install Playwright (only needed for SSO)
+
+```bash
+pip install playwright
+playwright install chromium
+```
+
+### How it works
 
 If your Jira instance is behind Azure AD (or similar SSO), the skill will automatically:
 
@@ -180,9 +184,9 @@ Check that:
 2. You can reach the Jira instance from your network
 3. VPN is connected (if required)
 
-### Browser doesn't open for login
+### Browser doesn't open for login (SSO only)
 
-Ensure Playwright and Chromium are installed:
+If you're behind Azure AD/SSO, ensure Playwright and Chromium are installed:
 ```bash
 pip install playwright
 playwright install chromium
