@@ -69,9 +69,10 @@ def login():
             # Get all cookies
             cookies = context.cookies()
 
-            # Filter relevant cookies
-            jira_cookies = [c for c in cookies if 'jira' in c.get('domain', '').lower()
-                          or 'juris' in c.get('domain', '').lower()]
+            # Filter cookies for Jira domain
+            jira_host = jira_url.replace('https://', '').replace('http://', '').split('/')[0]
+            jira_cookies = [c for c in cookies if jira_host in c.get('domain', '').lower()
+                          or 'jira' in c.get('domain', '').lower()]
 
             # Save cookies with metadata
             cookie_data = {
