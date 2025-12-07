@@ -39,12 +39,13 @@ def get_jira_url():
 def login():
     """Open browser for Azure AD login and save session cookies."""
     from playwright.sync_api import sync_playwright
+    import time
 
     jira_url = get_jira_url()
     ensure_cookie_dir()
 
     print(f"Opening browser for Jira login: {jira_url}")
-    print("Please complete the Azure AD login in the browser window.")
+    print("Complete the Azure AD login, then Jira login if prompted.")
     print("The browser will close automatically after successful login.\n")
 
     with sync_playwright() as p:
@@ -55,42 +56,95 @@ def login():
         # Navigate to Jira
         page.goto(jira_url)
 
-        # Wait for successful login (Jira dashboard or any Jira page)
-        try:
-            # Wait until we're on a Jira page (not Azure login)
-            page.wait_for_function(
-                "window.location.hostname.includes('jira')",
-                timeout=120000  # 2 minutes for login
-            )
+        # Wait for successful login with status updates
+        max_wait = 300  # 5 minutes
+        start = time.time()
+        logged_in = False
+        last_status = None
 
-            # Wait a bit more to ensure all cookies are set
-            page.wait_for_timeout(2000)
+        while time.time() - start < max_wait:
+            try:
+                status = page.evaluate("""() => {
+                    const host = window.location.hostname.toLowerCase();
 
-            # Get all cookies
-            cookies = context.cookies()
+                    // Still on Azure login?
+                    if (host.includes('microsoftonline') || host.includes('login.microsoft')) {
+                        return 'azure';
+                    }
 
-            # Filter cookies for Jira domain
-            jira_host = jira_url.replace('https://', '').replace('http://', '').split('/')[0]
-            jira_cookies = [c for c in cookies if jira_host in c.get('domain', '').lower()
-                          or 'jira' in c.get('domain', '').lower()]
+                    // Check for Jira login form elements
+                    const hasLoginForm = document.querySelector('#login-form') !== null ||
+                                         document.querySelector('input[name="os_username"]') !== null ||
+                                         document.querySelector('input[name="password"]') !== null ||
+                                         document.querySelector('.login-section') !== null ||
+                                         document.querySelector('#login-container') !== null ||
+                                         document.querySelector('form[action*="login"]') !== null;
 
-            # Save cookies with metadata
-            cookie_data = {
-                "saved_at": datetime.now().isoformat(),
-                "jira_url": jira_url,
-                "cookies": jira_cookies
-            }
+                    if (hasLoginForm) {
+                        return 'jira-login';
+                    }
 
-            with open(COOKIE_FILE, 'w') as f:
-                json.dump(cookie_data, f, indent=2)
+                    // Check for actual Jira dashboard/content
+                    const hasContent = document.querySelector('#header') !== null ||
+                                       document.querySelector('.aui-header') !== null ||
+                                       document.querySelector('#jira') !== null ||
+                                       document.querySelector('.ghx-board') !== null ||
+                                       document.querySelector('#dashboard') !== null;
 
-            print(f"\nLogin successful! Saved {len(jira_cookies)} cookies to {COOKIE_FILE}")
+                    if (hasContent) {
+                        return 'logged-in';
+                    }
 
-        except Exception as e:
-            print(f"Login timeout or error: {e}", file=sys.stderr)
-            sys.exit(1)
-        finally:
+                    return 'waiting';
+                }""")
+
+                if status != last_status:
+                    if status == 'azure':
+                        print("Azure AD login in progress...")
+                    elif status == 'jira-login':
+                        print("Jira login page - please enter your credentials...")
+                    elif status == 'logged-in':
+                        print("Login successful!")
+                        logged_in = True
+                        break
+                    elif status == 'waiting':
+                        print("Waiting for page to load...")
+                    last_status = status
+
+                time.sleep(1)
+
+            except Exception:
+                time.sleep(1)
+
+        if not logged_in:
+            print("Login timeout", file=sys.stderr)
             browser.close()
+            sys.exit(1)
+
+        # Wait for page to stabilize
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(2000)
+
+        # Get all cookies
+        cookies = context.cookies()
+
+        # Filter cookies for Jira domain
+        jira_host = jira_url.replace('https://', '').replace('http://', '').split('/')[0]
+        jira_cookies = [c for c in cookies if jira_host in c.get('domain', '').lower()
+                      or 'jira' in c.get('domain', '').lower()]
+
+        # Save cookies with metadata
+        cookie_data = {
+            "saved_at": datetime.now().isoformat(),
+            "jira_url": jira_url,
+            "cookies": jira_cookies
+        }
+
+        with open(COOKIE_FILE, 'w') as f:
+            json.dump(cookie_data, f, indent=2)
+
+        print(f"\nSaved {len(jira_cookies)} cookies to {COOKIE_FILE}")
+        browser.close()
 
 def load_cookies():
     """Load saved cookies from file."""

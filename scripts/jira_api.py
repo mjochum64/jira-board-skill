@@ -69,11 +69,13 @@ def trigger_auto_login():
         print("Playwright not installed. Run: pip install playwright", file=sys.stderr)
         return False
 
+    import time
+
     jira_url = get_jira_url()
     COOKIE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Session expired or not available. Opening browser for Azure AD login...")
-    print("Please complete the login. The browser will close automatically.\n")
+    print(f"Session expired or not available. Opening browser for login...")
+    print("Complete the Azure AD login, then Jira login if prompted.\n")
 
     try:
         with sync_playwright() as p:
@@ -83,11 +85,71 @@ def trigger_auto_login():
 
             page.goto(jira_url)
 
-            # Wait for successful login (on Jira page, not Azure)
-            page.wait_for_function(
-                "window.location.hostname.includes('jira')",
-                timeout=120000
-            )
+            # Wait for successful login with status updates
+            max_wait = 300  # 5 minutes
+            start = time.time()
+            logged_in = False
+            last_status = None
+
+            while time.time() - start < max_wait:
+                try:
+                    status = page.evaluate("""() => {
+                        const host = window.location.hostname.toLowerCase();
+
+                        // Still on Azure login?
+                        if (host.includes('microsoftonline') || host.includes('login.microsoft')) {
+                            return 'azure';
+                        }
+
+                        // Check for Jira login form elements
+                        const hasLoginForm = document.querySelector('#login-form') !== null ||
+                                             document.querySelector('input[name="os_username"]') !== null ||
+                                             document.querySelector('input[name="password"]') !== null ||
+                                             document.querySelector('.login-section') !== null ||
+                                             document.querySelector('#login-container') !== null ||
+                                             document.querySelector('form[action*="login"]') !== null;
+
+                        if (hasLoginForm) {
+                            return 'jira-login';
+                        }
+
+                        // Check for actual Jira dashboard/content
+                        const hasContent = document.querySelector('#header') !== null ||
+                                           document.querySelector('.aui-header') !== null ||
+                                           document.querySelector('#jira') !== null ||
+                                           document.querySelector('.ghx-board') !== null ||
+                                           document.querySelector('#dashboard') !== null;
+
+                        if (hasContent) {
+                            return 'logged-in';
+                        }
+
+                        return 'waiting';
+                    }""")
+
+                    if status != last_status:
+                        if status == 'azure':
+                            print("Azure AD login in progress...")
+                        elif status == 'jira-login':
+                            print("Jira login page - please enter your credentials...")
+                        elif status == 'logged-in':
+                            print("Login successful!")
+                            logged_in = True
+                            break
+                        last_status = status
+
+                    time.sleep(1)
+
+                except Exception:
+                    time.sleep(1)
+
+            if not logged_in:
+                print("Login timeout")
+                browser.close()
+                return False
+
+            # Wait for page to stabilize
+            page.wait_for_load_state("networkidle")
             page.wait_for_timeout(2000)
 
             cookies = context.cookies()
@@ -106,7 +168,7 @@ def trigger_auto_login():
             with open(COOKIE_FILE, 'w') as f:
                 json.dump(cookie_data, f, indent=2)
 
-            print(f"Login successful! Saved {len(jira_cookies)} cookies.\n")
+            print(f"Saved {len(jira_cookies)} cookies.\n")
             browser.close()
             return True
     except Exception as e:
