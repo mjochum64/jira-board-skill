@@ -7,8 +7,9 @@ A Claude Code skill for managing Jira boards, issues, and sprints via the Jira R
 - List, create, update, and transition Jira issues
 - Manage sprints and boards
 - Query issues with JQL
+- **Bearer Token (PAT) authentication** - Default for Jira Data Center
+- **Basic Auth** - Optional for Jira Cloud
 - **Azure AD Support**: Automatic browser-based login for Jira instances behind Azure AD/SSO
-- Works with both Basic Auth (API tokens) and session cookies
 
 ## Installation
 
@@ -24,16 +25,20 @@ Add these to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
 ```bash
 export JIRA_URL="https://your-company.atlassian.net"  # or your Jira Server URL
-export JIRA_USERNAME="your-email@company.com"
-export JIRA_API_TOKEN="your-api-token"
+export JIRA_USERNAME="your-email@company.com"         # Optional for Bearer auth
+export JIRA_API_TOKEN="your-api-token-or-pat"
 
 # Optional: Default project filter
 export JIRA_PROJECTS_FILTER="PROJ,DEV"
+
+# Optional: Authentication type (default: "bearer")
+# Use "basic" for Jira Cloud with API tokens
+export JIRA_AUTH_TYPE="bearer"
 ```
 
 **Getting an API token:**
-- **Jira Cloud**: https://id.atlassian.com/manage-profile/security/api-tokens
-- **Jira Server/Data Center**: Profile → Personal Access Tokens
+- **Jira Data Center 8.14+**: Profile → Personal Access Tokens (use Bearer auth - default)
+- **Jira Cloud**: https://id.atlassian.com/manage-profile/security/api-tokens (set `JIRA_AUTH_TYPE=basic`)
 
 ## Usage
 
@@ -176,6 +181,13 @@ Run the login command to refresh your session:
 ```bash
 python ~/.claude/skills/jira-board/scripts/jira_auth.py login
 ```
+
+### "403 Forbidden" or "AUTHENTICATION_DENIED"
+
+This usually means:
+1. **Wrong auth type**: Jira Data Center typically requires Bearer tokens (PAT), not Basic Auth. Ensure `JIRA_AUTH_TYPE` is not set or set to `bearer`.
+2. **CAPTCHA challenge**: Too many failed login attempts triggered a CAPTCHA. Log in via browser once to reset.
+3. **Basic Auth disabled**: Your Jira admin may have disabled Basic Auth. Use a Personal Access Token instead.
 
 ### "Connection error"
 

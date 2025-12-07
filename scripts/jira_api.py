@@ -37,14 +37,23 @@ def get_session_cookies():
 
 
 def get_auth_header():
-    """Get base64 encoded auth header."""
-    username = os.environ.get("JIRA_USERNAME")
+    """Get auth header - tries Bearer token first (for PAT), then Basic Auth."""
     token = os.environ.get("JIRA_API_TOKEN")
-    if not username or not token:
+    username = os.environ.get("JIRA_USERNAME")
+
+    if not token:
         return None
-    credentials = f"{username}:{token}"
-    encoded = base64.b64encode(credentials.encode()).decode()
-    return f"Basic {encoded}"
+
+    # If JIRA_AUTH_TYPE is set to "basic", use Basic Auth
+    auth_type = os.environ.get("JIRA_AUTH_TYPE", "bearer").lower()
+
+    if auth_type == "basic" and username:
+        credentials = f"{username}:{token}"
+        encoded = base64.b64encode(credentials.encode()).decode()
+        return f"Basic {encoded}"
+
+    # Default: Bearer token (for Personal Access Tokens)
+    return f"Bearer {token}"
 
 
 def get_jira_url():
